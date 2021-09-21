@@ -3,8 +3,14 @@ import { BaseEffectsLayer, BelowTokensEffectsLayer } from "./module/canvas-effec
 export default function registerLayers() {
 
     CONFIG.Canvas.layers = foundry.utils.mergeObject(Canvas.layers, {
-        sequencerEffectsBelowTokens: BelowTokensEffectsLayer,
-        sequencerEffectsAboveTokens: BaseEffectsLayer
+        sequencerEffectsBelowTokens: {
+            layerClass: BelowTokensEffectsLayer,
+            group: "primary"
+        },
+        sequencerEffectsAboveTokens: {
+            layerClass: BaseEffectsLayer,
+            group: "primary"
+        }
     });
 
     if (!Object.is(Canvas.layers, CONFIG.Canvas.layers)) {
