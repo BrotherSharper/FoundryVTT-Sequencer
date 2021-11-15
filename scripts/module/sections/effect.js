@@ -45,6 +45,7 @@ export default class EffectSection extends Section {
         this._screenSpacePosition = { x: 0, y: 0 };
         this._screenSpaceScale = false;
         this._offsets = [];
+        this._subEffects = [];
     }
 
     /**
@@ -662,6 +663,12 @@ export default class EffectSection extends Section {
         return this;
     }
 
+    subEffect({delay = 0, fromEnd = false}={}){
+        const effect = lib.sectionProxyWrap(new SubEffectSection(this.sequence, {delay, fromEnd}));
+        this._subEffects.push(effect);
+        return effect;
+    }
+
     _expressWarnings(){
         if(this._reachTowards && this._anchor){
             this.sequence._showWarning(this, "reachTowards", "you have called .reachTowards() and .anchor() - reachTowards will manually set the X axis of the anchor and may not behave like you expect.", true);
@@ -678,7 +685,6 @@ export default class EffectSection extends Section {
     }
 
     async run() {
-        this._expressWarnings();
         const data = await this._sanitizeEffectData();
         Hooks.call("preCreateSequencerEffect", data);
         let push = !(data.users.length === 1 && data.users.includes(game.userId));
@@ -708,16 +714,15 @@ export default class EffectSection extends Section {
 
     async _sanitizeEffectData() {
 
+        this._expressWarnings();
+
         let data = {
             id: randomID(),
             moduleName: this.sequence.moduleName,
             creatorUserId: game.userId,
             file: this._file,
             text: this._text,
-            position: {
-                x: 0,
-                y: 0,
-            },
+            position: false,
             anchor: this._anchor,
             spriteOffset: this._spriteOffset,
             spriteAnchor: this._spriteAnchor,
@@ -763,7 +768,8 @@ export default class EffectSection extends Section {
             screenSpacePosition: this._screenSpacePosition,
             screenSpaceScale: this._screenSpaceScale,
             sceneId: game.user.viewedScene,
-            users: Array.from(this._users)
+            users: Array.from(this._users),
+            subEffects: []
         };
 
         data = this._determineTargets(data);
@@ -851,6 +857,11 @@ export default class EffectSection extends Section {
 
         if ((typeof data.file !== "string" || data.file === "") && !this._text) {
             throw this.sequence._throwError(this, "file", "an effect must have text or  must be of type string or array");
+        }
+
+        for(let effect of this._subEffects){
+            let subEffectData = await effect._sanitizeEffectData();
+            data.subEffects.push(subEffectData);
         }
 
         return data;
@@ -1065,7 +1076,7 @@ export default class EffectSection extends Section {
             y: pos?.y ?? obj?.y ?? obj?.data?.y,
         };
 
-        if (typeof pos.x !== "number" || typeof pos.y !== "number") throw this.sequence._throwError(this, "getCleanPosition", `Could not get position from: ${obj}`);
+        //if (typeof pos.x !== "number" || typeof pos.y !== "number") throw this.sequence._throwError(this, "getCleanPosition", `Could not get position from: ${obj}`);
 
         return pos;
 
@@ -1328,6 +1339,28 @@ export default class EffectSection extends Section {
 
         return position;
 
+    }
+
+}
+
+class SubEffectSection extends EffectSection{
+
+    constructor(sequence, { delay = 0, fromEnd = false }={}) {
+        super(sequence);
+        this._delay = delay;
+        this._fromEnd = fromEnd;
+    }
+
+    subEffect(...args) {
+        throw this.sequence._throwError(this, "subEffect", "Sub effects cannot have their own sub effects");
+    }
+
+    async _sanitizeEffectData() {
+        const data = await super._sanitizeEffectData();
+        data.delay = this._delay;
+        data.fromEnd = this._fromEnd;
+        console.log(data);
+        return data;
     }
 
 }

@@ -189,10 +189,11 @@ export default class CanvasEffect {
         this.scaleOut();
         this.rotateIn();
         this.rotateOut();
-        this.setEndTimeout();
-        this.debug();
+        this.queueSubEffects();
         this.tryPlay();
         this.timeoutSpriteVisibility();
+        this.setEndTimeout();
+        this.debug();
     }
 
     timeoutSpriteVisibility(){
@@ -202,6 +203,10 @@ export default class CanvasEffect {
     }
 
     calculateDuration() {
+
+        if(this.data.duration === Infinity){
+            this.data.duration = Number.MAX_SAFE_INTEGER;
+        }
 
 		this.animationDuration = this.data.duration || (this.source?.duration ?? 1) * 1000;
 
@@ -218,9 +223,9 @@ export default class CanvasEffect {
 			if(!this.data.duration && !this.source){
 
 				let animProp = this.data.animatedProperties;
-				let fadeDuration = (animProp.fadeIn?.duration ?? 0) + (animProp.fadeOut?.duration ?? 0) ;
-				let scaleDuration = (animProp.scaleIn?.duration ?? 0) + (animProp.scaleOut?.duration ?? 0) ;
-				let rotateDuration = (animProp.rotateIn?.duration ?? 0) + (animProp.rotateOut?.duration ?? 0) ;
+				let fadeDuration = (animProp.fadeIn?.duration ?? 0) + (animProp.fadeOut?.duration ?? 0);
+                let scaleDuration = (animProp.scaleIn?.duration ?? 0) + (animProp.scaleOut?.duration ?? 0);
+                let rotateDuration = (animProp.rotateIn?.duration ?? 0) + (animProp.rotateOut?.duration ?? 0) ;
 				let moveDuration = 0;
 				if(moves) {
 					moveDuration = (this.data.speed ? (this.data.distance / this.data.speed) * 1000 : 1000) + moves.delay;
@@ -727,6 +732,29 @@ export default class CanvasEffect {
         return duration + moves.delay;
     }
 
+    queueSubEffects(animationDuration){
+
+        animationDuration = animationDuration ?? this.animationDuration;
+
+        for(let subEffectData of this.data.subEffects){
+
+            const waitTime = subEffectData.fromEnd
+                ? animationDuration + subEffectData.delay
+                : subEffectData.delay;
+
+            setTimeout(() => {
+                if(!subEffectData.position){
+                    subEffectData.position = {
+                        x: (this.sprite.worldTransform.tx - canvas.stage.worldTransform.tx) / canvas.stage.scale.x,
+                        y: (this.sprite.worldTransform.ty - canvas.stage.worldTransform.ty) / canvas.stage.scale.y
+                    }
+                }
+                let push = !(subEffectData.users.length === 1 && subEffectData.users.includes(game.userId));
+                Sequencer.EffectManager.play(subEffectData, push);
+            }, waitTime);
+        }
+    }
+
     setEndTimeout(){
         setTimeout(() => {
             this.endEffect();
@@ -736,7 +764,8 @@ export default class CanvasEffect {
 
 	endEffect(){
 		if(!this.ended) {
-            Hooks.call("endedSequencerEffect", this.data);
+            Hooks.call("endedSequencerEffect", this);
+
 			this.ended = true;
 			try {
 				this.source.removeAttribute('src');
@@ -911,7 +940,7 @@ export default class CanvasEffect {
 			}else {
 				this.calculateDuration();
 				if(shouldPlay){
-                    Hooks.call("createSequencerEffect", this.data);
+                    Hooks.call("createSequencerEffect", this);
 				    this.initialize();
                 }
 			}
@@ -1006,8 +1035,10 @@ class PersistentCanvasEffect extends CanvasEffect{
             this.fadeOutAudio(this.data.extraEndDuration),
             this.scaleOut(this.data.extraEndDuration),
             this.rotateOut(this.data.extraEndDuration),
+            this.data.extraEndDuration
         ].filter(Boolean);
         const waitDuration = Math.max(...durations);
+        this.queueSubEffects(waitDuration);
         this.resolve(waitDuration);
         return new Promise(resolve => setTimeout(() => {
             super.endEffect()
